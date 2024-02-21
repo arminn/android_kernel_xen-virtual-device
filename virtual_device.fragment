@@ -19,3 +19,7 @@ CONFIG_TEST_MEMINIT=m
 
 # Cuttlefish-specific drivers
 CONFIG_VIRT_WIFI=m
+
+# Enable dmabuf heaps
+CONFIG_DMABUF_HEAPS_SYSTEM=m
+CONFIG_CLK_VEXPRESS_OSC=m
