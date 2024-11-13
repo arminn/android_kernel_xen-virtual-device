@@ -1,1 +1,5 @@
+blocklist dummy-cpufreq.ko
+# ptp_kvm.ko should only load when the kvm hypervisor is available on the target
+blocklist ptp_kvm.ko
 blocklist vkms.ko
+blocklist ppp_mppe.ko

@@ -1,25 +1,25 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:sets.bzl", "sets")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load(
     "//build/kernel/kleaf:kernel.bzl",
     "ddk_headers",
     "ddk_module",
+    "initramfs_modules_lists_test",
     "kernel_abi",
     "kernel_build",
+    "kernel_build_config",
+    "kernel_compile_commands",
     "kernel_dtstree",
     "kernel_images",
     "kernel_module_group",
+    "kernel_module_test",
     "kernel_modules_install",
     "kernel_unstripped_modules_archive",
     "merged_kernel_uapi_headers",
 )
-load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
-load("//build/bazel_common_rules/test_mappings:test_mappings.bzl", "test_mappings_dist")
-load("//build/bazel_common_rules/exec:exec.bzl", "exec")
-
-load("//common:modules.bzl", "COMMON_GKI_MODULES_LIST")
-
-
+load("//common:modules.bzl", "get_gki_modules_list", "get_kunit_modules_list")
 
 package(
     default_visibility = [
@@ -27,12 +27,16 @@ package(
     ],
 )
 
-
-
-_GKI_MODULES_BASENAMES = [
-    paths.basename(module)
-    for module in COMMON_GKI_MODULES_LIST
+_COMMON_GKI_MODULES_LIST  = [
+    module
+    for module in [
+        paths.basename(module)
+        for module in get_gki_modules_list("arm64")
+    ]
+    # filter out unneeded modules
+    if not (module.endswith("ptp_kvm.ko") or module.endswith("ppp_mppe.ko"))
 ]
+
 
 _VIRT_COMMON_MODULES = [
     # keep sorted
@@ -48,18 +52,14 @@ _VIRT_COMMON_MODULES = [
     "virt_wifi.ko",
     "virtio-gpu.ko",
     "virtio-rng.ko",
-    "virtio_balloon.ko",
-    "virtio_blk.ko",
-    "virtio_console.ko",
     "virtio_dma_buf.ko",
     "virtio_input.ko",
     "virtio_net.ko",
-    "virtio_pci.ko",
-    "virtio_pci_legacy_dev.ko",
-    "virtio_pci_modern_dev.ko",
     "virtio_snd.ko",
     "vkms.ko",
-    "vmw_vsock_virtio_transport.ko",
+    "cfg80211.ko",
+    "mac80211.ko",
+    "crypto/sha1_generic.ko",
 ]
 
 _VIRT_AARCH64_MODULES = [
@@ -68,21 +68,56 @@ _VIRT_AARCH64_MODULES = [
     "armmmci.ko",
     "clk-vexpress-osc.ko",
     "drm_dma_helper.ko",
+    "kfifo_buf.ko",
     "nd_virtio.ko",
     "pl111_drm.ko",
     "psmouse.ko",
+    "scmi_iio.ko",
     "vexpress-config.ko",
     "vexpress-sysreg.ko",
     "virtio_mmio.ko",
     "virtio_pmem.ko",
 ]
 
-_XEN_VIRT_AARCH64_MODULES = [
-    # keep sorted
+# modules not needed for our build
+_IMPLICIT_MODULES = [
+    "lib/kunit/kunit.ko",
+    "drivers/rtc/lib_test.ko",
+    "net/core/dev_addr_lists_test.ko",
+    "lib/kunit/kunit-test.ko",
+    "drivers/clk/clk_test.ko",
+    "sound/soc/soc-topology-test.ko",
+    "sound/soc/soc-utils-test.ko",
+    "drivers/base/regmap/regmap-raw-ram.ko",
+    "kernel/time/time_test.ko",
+    "drivers/clk/clk-gate_test.ko",
+    "drivers/input/tests/input_test.ko",
+    "lib/kunit/kunit-example-test.ko",
+    "drivers/base/regmap/regmap-kunit.ko",
+    "drivers/hid/hid-uclogic-test.ko",
+    "fs/ext4/ext4-inode-test.ko",
+    "drivers/iio/test/iio-test-format.ko",
+    "drivers/base/regmap/regmap-ram.ko",
+    "drivers/ptp/ptp_kvm.ko",
+    "fs/fat/fat_test.ko",
+    # present in vrt-device
+    "btintel.ko",
+    "btrtl.ko",
+    "btusb.ko",
+    "dummy-cpufreq.ko",
+    "dummy_hcd.ko",
+    "gs_usb.ko",
+    "mt76.ko",
+    "mt76-usb.ko",
+    "mt76x0-common.ko",
+    "mt76x02-lib.ko",
+    "mt76x02-usb.ko",
+    "mt76x0u.ko",
+    "mt76x2-common.ko",
+    "mt76x2u.ko",
+    "pulse8-cec.ko",
+    "ppp_mppe.ko",
 ]
-
-
-
 
 filegroup(
     name = "common_sources",
@@ -116,21 +151,33 @@ kernel_build(
         "modules.builtin.modinfo",
         "vmlinux",
         "vmlinux.symvers",
-    ],
+     ],
     base_kernel = None,
     build_config = "build.config.xen_virtual_device.aarch64",
+    make_goals = [
+      "Image",
+      "modules",
+    ],
     collect_unstripped_modules = True,
     strip_modules = True,
-    module_outs = _GKI_MODULES_BASENAMES + _VIRT_COMMON_MODULES + _VIRT_AARCH64_MODULES + _XEN_VIRT_AARCH64_MODULES,
+    module_outs = BB + _VIRT_COMMON_MODULES + _VIRT_AARCH64_MODULES,
+    module_implicit_outs = _IMPLICIT_MODULES,
+    visibility = ["//common-modules:__subpackages__"],
+)
+
+kernel_abi(
+    name = "xen_virtual_device_aarch64_abi",
+    kernel_build = ":xen_virtual_device_aarch64",
+    kmi_symbol_list_add_only = True,
+)
+
+kernel_compile_commands(
+    name = "xen_virtual_device_aarch64_compile_commands",
+    kernel_build = ":xen_virtual_device_aarch64",
 )
 
 kernel_modules_install(
     name = "xen_virtual_device_aarch64_modules_install",
-    kernel_build = ":xen_virtual_device_aarch64",
-)
-
-kernel_unstripped_modules_archive(
-    name = "xen_virtual_device_aarch64_unstripped_modules_archive",
     kernel_build = ":xen_virtual_device_aarch64",
 )
 
@@ -141,33 +188,23 @@ merged_kernel_uapi_headers(
 
 kernel_images(
     name = "xen_virtual_device_aarch64_images",
-    build_initramfs = True,
+    build_initramfs = False,
     build_boot = False,
     kernel_build = ":xen_virtual_device_aarch64",
     kernel_modules_install = ":xen_virtual_device_aarch64_modules_install",
     modules_blocklist = "modules.blocklist",
+	modules_options = "modules.options",
 )
 
 copy_to_dist_dir(
-    name = "xen_virtual_device_aarch64_copy_to_dist_dir",
+    name = "xen_virtual_device_aarch64_dist",
     data = [
         ":xen_virtual_device_aarch64",
         ":xen_virtual_device_aarch64_images",
         ":xen_virtual_device_aarch64_merged_kernel_uapi_headers",
         ":xen_virtual_device_aarch64_modules_install",
-        ":xen_virtual_device_aarch64_unstripped_modules_archive",
     ],
     dist_dir = "out/xen_virtual_device_aarch64/dist",
     flat = True,
     log = "info",
-)
-
-exec(
-    name = "xen_virtual_device_aarch64_dist",
-    data = [
-        ":xen_virtual_device_aarch64_copy_to_dist_dir",
-    ],
-    script = """
-        $(rootpath :xen_virtual_device_aarch64_copy_to_dist_dir) $@
-    """,
 )

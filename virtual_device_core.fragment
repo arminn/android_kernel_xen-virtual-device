@@ -10,4 +10,8 @@ CONFIG_VIRTIO_PCI=m
 CONFIG_VIRTIO_VSOCKETS=m
 
 # Disable module signing during build
+# CONFIG_MODULE_SIG is not set
+# CONFIG_MODULE_SIG_PROTECT is not set
 # CONFIG_MODULE_SIG_ALL is not set
+# CONFIG_MODULE_SIG_SHA1 is not set
+# CONFIG_MODULE_SIG_FORMAT is not set
